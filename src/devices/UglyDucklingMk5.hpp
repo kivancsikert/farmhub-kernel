@@ -77,7 +77,7 @@ static gpio_num_t TXD0 = Pin::registerPin("TXD0", GPIO_NUM_43);
 
 class UglyDucklingMk5 : public DeviceDefinition<Mk5Config> {
 public:
-    UglyDucklingMk5()
+    UglyDucklingMk5(I2CManager& i2c)
         : DeviceDefinition<Mk5Config>(
             pins::STATUS,
             pins::BOOT) {
@@ -108,9 +108,9 @@ public:
         pins::NSLEEP
     };
 
-    const ServiceRef<PwmMotorDriver> motorA { "a", motorADriver };
-    const ServiceRef<PwmMotorDriver> motorB { "b", motorBDriver };
-    const std::list<ServiceRef<PwmMotorDriver>> motors { motorA, motorB };
+    const ServiceRef<CurrentSensingMotorDriver> motorA { "a", motorADriver };
+    const ServiceRef<CurrentSensingMotorDriver> motorB { "b", motorBDriver };
+    const ServiceContainer<CurrentSensingMotorDriver> motors { { motorA, motorB } };
 
     ValveFactory valveFactory { motors, ValveControlStrategyType::Latching };
     FlowMeterFactory flowMeterFactory;

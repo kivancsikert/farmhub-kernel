@@ -16,10 +16,10 @@
 #include <kernel/Telemetry.hpp>
 #include <kernel/Watchdog.hpp>
 
+#include <kernel/drivers/CurrentSenseDriver.hpp>
 #include <kernel/drivers/MotorDriver.hpp>
 #include <kernel/drivers/SwitchManager.hpp>
 
-#include <peripherals/Motorized.hpp>
 #include <peripherals/Peripheral.hpp>
 #include <peripherals/light_sensor/Bh1750.hpp>
 #include <peripherals/light_sensor/LightSensor.hpp>
@@ -95,7 +95,7 @@ public:
         shared_ptr<MqttDriver::MqttRoot> mqttRoot,
         SleepManager& sleepManager,
         SwitchManager& switches,
-        PwmMotorDriver& motor,
+        CurrentSensingMotorDriver& motor,
         TLightSensorComponent& lightSensor,
         gpio_num_t openPin,
         gpio_num_t closedPin,
@@ -155,6 +155,7 @@ public:
         telemetry["state"] = lastState;
         telemetry["targetState"] = lastTargetState;
         telemetry["operationState"] = operationState;
+        telemetry["current"] = motor.readCurrent();
         if (overrideState != DoorState::NONE) {
             time_t rawtime = system_clock::to_time_t(overrideUntil);
             auto timeinfo = gmtime(&rawtime);
@@ -180,6 +181,11 @@ private:
             // We have previously reached the target state, but we have lost the signal from the switches.
             // We assume the door is still in the target state to prevent it from moving when it shouldn't.
             currentState = lastState;
+        }
+
+        if (currentState != DoorState::NONE) {
+            Log.trace("Motor current: %.2f",
+                motor.readCurrent());
         }
 
         if (currentState != targetState) {
@@ -319,7 +325,7 @@ private:
     }
 
     SleepManager& sleepManager;
-    PwmMotorDriver& motor;
+    CurrentSensingMotorDriver& motor;
     TLightSensorComponent& lightSensor;
 
     double openLevel = std::numeric_limits<double>::max();
@@ -363,7 +369,7 @@ public:
         uint8_t lightSensorAddress,
         SleepManager& sleepManager,
         SwitchManager& switches,
-        PwmMotorDriver& motor,
+        CurrentSensingMotorDriver& motor,
         const ChickenDoorDeviceConfig& config)
         : Peripheral<ChickenDoorConfig>(name, mqttRoot)
         , lightSensor(
@@ -422,16 +428,16 @@ protected:
 };
 
 class ChickenDoorFactory
-    : public PeripheralFactory<ChickenDoorDeviceConfig, ChickenDoorConfig>,
-      protected Motorized {
+    : public PeripheralFactory<ChickenDoorDeviceConfig, ChickenDoorConfig> {
 public:
-    ChickenDoorFactory(const std::list<ServiceRef<PwmMotorDriver>>& motors)
+    ChickenDoorFactory(
+        const ServiceContainer<CurrentSensingMotorDriver>& motors)
         : PeripheralFactory<ChickenDoorDeviceConfig, ChickenDoorConfig>("chicken-door")
-        , Motorized(motors) {
+        , motors(motors) {
     }
 
     unique_ptr<Peripheral<ChickenDoorConfig>> createPeripheral(const String& name, const ChickenDoorDeviceConfig& deviceConfig, shared_ptr<MqttDriver::MqttRoot> mqttRoot, PeripheralServices& services) override {
-        PwmMotorDriver& motor = findMotor(deviceConfig.motor.get());
+        CurrentSensingMotorDriver& motor = motors.findService(deviceConfig.motor.get());
         auto lightSensorType = deviceConfig.lightSensor.get().type.get();
         try {
             if (lightSensorType == "bh1750") {
@@ -448,6 +454,9 @@ public:
             return std::make_unique<ChickenDoor<NoLightSensorComponent>>(name, mqttRoot, services.i2c, 0x00, services.sleepManager, services.switches, motor, deviceConfig);
         }
     }
+
+private:
+    const ServiceContainer<CurrentSensingMotorDriver>& motors;
 };
 
 }    // namespace farmhub::peripherals::chicken_door

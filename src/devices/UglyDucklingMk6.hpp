@@ -6,6 +6,7 @@
 #include <kernel/Kernel.hpp>
 #include <kernel/Service.hpp>
 #include <kernel/drivers/BatteryDriver.hpp>
+#include <kernel/drivers/CurrentSenseDriver.hpp>
 #include <kernel/drivers/Drv8833Driver.hpp>
 #include <kernel/drivers/LedDriver.hpp>
 
@@ -86,7 +87,7 @@ public:
 
 class UglyDucklingMk6 : public DeviceDefinition<Mk6Config> {
 public:
-    UglyDucklingMk6()
+    UglyDucklingMk6(I2CManager& i2c)
         : DeviceDefinition<Mk6Config>(
               pins::STATUS,
               pins::BOOT) {
@@ -119,9 +120,13 @@ public:
         config.motorNSleepPin.get()
     };
 
-    const ServiceRef<PwmMotorDriver> motorA { "a", motorDriver.getMotorA() };
-    const ServiceRef<PwmMotorDriver> motorB { "b", motorDriver.getMotorB() };
-    const std::list<ServiceRef<PwmMotorDriver>> motors { motorA, motorB };
+    SimpleCurrentSenseDriver currentSense { pins::DIPROPI };
+    ExternalCurrentSensingMotorDriver motorADriver { motorDriver.getMotorA(), currentSense };
+    ExternalCurrentSensingMotorDriver motorBDriver { motorDriver.getMotorB(), currentSense };
+
+    const ServiceRef<CurrentSensingMotorDriver> motorA { "a", motorADriver };
+    const ServiceRef<CurrentSensingMotorDriver> motorB { "b", motorBDriver };
+    const ServiceContainer<CurrentSensingMotorDriver> motors { { motorA, motorB } };
 
     ValveFactory valveFactory { motors, ValveControlStrategyType::Latching };
     FlowMeterFactory flowMeterFactory;

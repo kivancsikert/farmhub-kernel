@@ -5,6 +5,7 @@
 #include <kernel/Service.hpp>
 #include <kernel/drivers/Bq27220Driver.hpp>
 #include <kernel/drivers/Drv8833Driver.hpp>
+#include <kernel/drivers/Ina219Driver.hpp>
 #include <kernel/drivers/LedDriver.hpp>
 
 #include <peripherals/Peripheral.hpp>
@@ -84,10 +85,11 @@ public:
 
 class UglyDucklingMk7 : public DeviceDefinition<Mk7Config> {
 public:
-    UglyDucklingMk7()
+    UglyDucklingMk7(I2CManager& i2c)
         : DeviceDefinition<Mk7Config>(
               pins::STATUS,
-              pins::BOOT) {
+              pins::BOOT)
+        , currentSense(i2c, pins::SDA, pins::SCL) {
     }
 
     virtual std::shared_ptr<BatteryDriver> createBatteryDriver(I2CManager& i2c) override {
@@ -113,9 +115,13 @@ public:
         pins::LOADEN,
     };
 
-    const ServiceRef<PwmMotorDriver> motorA { "a", motorDriver.getMotorA() };
-    const ServiceRef<PwmMotorDriver> motorB { "b", motorDriver.getMotorB() };
-    const std::list<ServiceRef<PwmMotorDriver>> motors { motorA, motorB };
+    Ina219Driver currentSense;
+    ExternalCurrentSensingMotorDriver motorADriver { motorDriver.getMotorA(), currentSense };
+    ExternalCurrentSensingMotorDriver motorBDriver { motorDriver.getMotorB(), currentSense };
+
+    const ServiceRef<CurrentSensingMotorDriver> motorA { "a", motorADriver };
+    const ServiceRef<CurrentSensingMotorDriver> motorB { "b", motorBDriver };
+    const ServiceContainer<CurrentSensingMotorDriver> motors { { motorA, motorB } };
 
     ValveFactory valveFactory { motors, ValveControlStrategyType::Latching };
     FlowMeterFactory flowMeterFactory;
